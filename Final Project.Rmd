@@ -1,0 +1,878 @@
+---
+title: "COMP 6115 KDDA1 - Final Project"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+\newpage
+# Business Understanding
+\
+\
+Customer churn is a major issue and is the single most important concern of medium and large Telecommunication companies. With data being dubbed, “The Gold of the Twenty-first Century” and the driving force behind the success of many data-driven companies; Telecommunication giants are now more than ever, turning to Data Science to help solve their business problems( e.g. Churning) and thus maximize profits.
+
+### Business Objectives
+\
+TeleCom, a telecommunications company located in the Kingston who specializes in offering call and messaging services to its clients, have noticed that several of its customers each month have stopped using their services, thus have churned. TeleCom is deeply concerned about the loss of its customers and declines in its profits, especially in light of the current global pandemic. The company aims, through a machine learning model, to identify customers who are likely to churn and offer them special deals and lower call and messaging rates, in an effort to stop at risk customers from churning. 
+
+### Data Mining Goals
+\
+In light of TeleCom’s business problem, the goal of this data mining project, is to predict which of its customers will churn, given information about their previous service plans, call and messaging history. Success of the data mining project is geared towards creating a machine learning, classification model that is able to correctly predict which customers will churn with high accuracy, sensitivity, specificity, precision and good simplicity, AUC and stability.  
+
+### Complete Project Plan
+\
+In order to achieve the intended data mining goals and thereby achieving the TeleCom’s business goals, a business plan is established. This entails, acquiring the company’s database used to store data about the customers’ service plans, message and call history, performing data exploration and cleaning, splitting dataset into training and test sets, creating classification models and finally evaluating their performance, to select the best model.
+
+
+\newpage
+# Data Understanding
+
+### Data Collection 
+The dataset used for this data mining project was, [telecom_churn.csv](https://www.kaggle.com/sagnikpatra/edadata), taken from Kaggle, an online repository for datasets and code documentation. 
+\
+\
+
+### Data Dictionary
+\
+The dataset mostly contained columns related service usage by customers; call minutes, both local and international and call charges. The target variable field is ‘Churn’, with two classes, False or True, indicating which customer has churned. Other fields included are State, Area code and Account length. Based on the business understanding of the data, 19 columns were chosen to build the machine learning models. 
+
+|Number|	Variables	      |Description                                         |
+|:-----|:-----------------|:---------------------------------------------------|
+|1|	Account.length|Length of time customer has had an account|
+|2|	Area.code|Area code of each customer|
+|3|	International.plan|Whether or not customer has an international plan|
+|4|	Voice.mail.plan|Whether or not customer has a voice mail plan|
+|5|	Number.vmail.messages|Number of voicemail messages a customer has|
+|6|	Total.day.minutes|Total number of day call minutes customer used|
+|7|	Total.day.calls|Total number of day calls made by customer|
+|8|	Total.day.charge|Total amount customer is charged for day usage of service|
+|9|	Total.eve.minutes|Total number of evening call minutes customer used|
+|10| Total.eve.calls|Total number of evening call minutes customer used|
+|11| Total.eve.charge|Total amount customer is charged for evening usage of service|
+|12| Total.night.minutes|Total number of evening call minutes customer used|
+|13| Total.night.calls|Total number of night calls made by customer|
+|14| Total.night.charge|Total amount customer is charged for night usage of service|
+|15| Total.intl.minutes|Total number of international call minutes customer used|
+|16| Total.intl.calls|Total number of international calls made by customer|
+|17| Total.intl.charge|Total amount customer is charged for international service use|
+|19| Customer.service.calls|Number of calls made to the company’s customer service|
+|20| Churn|	Classification whether or not customer have churned|
+
+
+First we want to load all the required packages.
+```{r, warning=FALSE, results='hide'}
+library(caret)
+library(caTools)
+library(ggplot2)
+library(pROC)
+library(rpart)
+library(rpart.plot)
+```
+\
+\
+We now want to load in the data set.
+```{r}
+data <- read.csv(file.choose())
+```
+\
+\
+We want to get some understanding of the data by looking at some statistics.
+```{r}
+#Show the dimemsion of the data
+dim(data)
+
+#Shows summary statistics for the data
+summary(data)
+
+#show the structure of the data
+str(data)
+
+# Shows the first 5 rows of data
+head(data)
+
+# Displayed the number of missing values in the data set
+sum(is.na(data))
+```
+
+\newpage
+# Data Preparation
+\
+\
+In the data exploration phase of the data mining process, distribution of key attributes such as  the target variable, Churn were visualized, simple queries were done to get a closer on the structure and form of the dataset, which included head, tail, summary, str, View and simple statistical analyses. Also, relationships between pairs of predictor variables and properties of significant sub-populations were explored.
+\
+\
+We note the need for some data pre-processing on the data set. We will convert the attributes `International.plan`, `Voice.mail.plan` and `Churn` from ordinal data to numerical data types.
+```{r}
+data$International.plan<-ifelse(data$International.plan=='Yes',1,0)
+data$Voice.mail.plan<-ifelse(data$Voice.mail.plan=='Yes',1,0)
+data$Churn<-ifelse(data$Churn=='True',1,0)
+```
+\
+\
+We will also need to classify the Churn variable as factor.
+```{r}
+data$Churn <- as.factor(data$Churn)
+```
+\
+\
+We will also remove the the `State` attribute as it is not needed to create our model.
+```{r}
+data$State <- NULL
+```
+\
+\
+Again looking at the structure of the the data set.
+```{r}
+str(data)
+```
+\
+\
+Visualizing the the distribution of the target class give the following graph.
+```{r}
+barplot(table(data$Churn), ylab ="Frequency", 
+        main = "Distribution of Target Class", 
+        col="lightblue")
+```
+\
+From the visualization of the `Churn` target variable above, it was clearly demonstrated that there existed a class imbalance in this variable. Therefore during the stratified sampling phase of the model construction, the observations will be sampled with approximately equal proportions to achieve a better model. 
+\
+\
+After thorough examination of the dataset, the quality of the data was deemed to be excellent. This can be attributed to the data being complete. This means that it covered all the cases required. The data was correct, free of errors and no missing values were detected in the dataset. 
+
+\newpage
+# Data Modelling
+\
+\
+In this stage we will train four (4) models to determine which one of them provides the most accurate prediction. Here we will use two (2) logistic regression models and two (2) decision tree models.
+\
+\
+
+### Splitting the Data
+Before we create our models, we first need to split the data into a training set and a testing set. The training set will be used to train the model and define the optimal parameters to be used to create the models. The test data is needed to evaluate the accuracy of the trained model.
+
+\
+Here we will use a 75/25 split on the data.
+```{r}
+set.seed(1670)
+new.data <- sample.split(Y = data$Churn, SplitRatio = 0.75)
+train.data <- data[new.data,]
+test.data <- data[!new.data,]
+
+print(paste('The dimension of the training data is', dim(train.data)[1], 'rows and',dim(train.data)[2], 'attributes'))
+print(paste('The dimension of the test data is', dim(test.data)[1], 'rows and',dim(test.data)[2], 'attributes'))
+```
+
+\newpage
+## Model 1
+\
+We will create the first model using logistic regression utilizing all the attributes. 
+\
+```{r}
+model.1 <- glm(Churn ~ .,
+               data=train.data, 
+               family=binomial(link="logit"))
+
+summary(model.1)
+```
+
+### Model 1 - Log Likelihood
+Analyzing the results we see that only `International.plan`, `Customer.service.calls`and `Total.intl.calls` are statistically significant within this model.This suggests a strong association of the these attributes with the probability of having churned. The negative coefficient for `Total.intl.calls`, suggests that all other variables being equal, the customers with a high number of international calls are less likely to have churned.
+\
+\
+For a given model, we want to maximize the log likelihood. Here we see the log likelihood for model 1.
+```{r}
+logLik(model.1) 
+```
+
+### Model 1 - R-Squared
+R-squared is a statistical measure of how close the data are to the fitted regression line. That is, it measures how well the model explains the variability of the response data around its mean by find how much variation is explained by the model.
+```{r}
+#log-likelihood of the null model
+model1.null <- model.1$null.deviance/-2
+
+#log-likelihood of model 1
+model1.proposed <- model.1$deviance/-2
+
+#Calculating McFaddens Pseudo R squared
+r_sq1 <- (model1.null  - model1.proposed)/model1.null
+r_sq1
+```
+### Model 1 - P-Value
+Now we want to find the associated p-value for our model 1.
+```{r}
+p_value1 <- 1 - pchisq(2*(model1.proposed - model1.null), 
+                      df = (length(model.1$coefficients)-1))
+p_value1
+```
+\
+Since the p-value is 0, it indicates that the explained variation is not due to chance.
+
+
+### Model 1 - Confusion Matrix
+A confusion matrix is a table that is often used to describe the performance of a classification model. Below is the confusion matrix for our model 1. 
+\
+\
+First we will use the test data to make prediction for the Churn probabilities. After converting all probabilities greater than or equal to 0.5 to 1 and the probabilities less than 0.5 to 0, where 1 indicates the customer has churned and 0 indicated that the customer has not churned, we will display the confusion matrix.
+```{r}
+#predict the probabilities
+probtest.model1 =predict(model.1, test.data, type = "response") 
+
+#Re-code probability to classifiers
+predVal1 <- ifelse(probtest.model1 >= 0.5, 1, 0)
+predtest.model1 <- factor(predVal1, levels = c(0,1))
+
+# Assigning the target class to a variable
+actualTest.model1 <-test.data$Churn
+```
+\
+To create the confusion matrix with the associated perfomance measures we need to evaluate the model, we create the function draw_confusion_matrix.
+\
+```{r}
+draw_confusion_matrix <- function(cm) {
+  
+  total <- sum(cm$table)
+  res <- as.numeric(cm$table)
+  
+  # Generate color gradients. Palettes come from RColorBrewer.
+  greenPalette <- c("#F7FCF5","#E5F5E0","#C7E9C0","#A1D99B","#74C476","#41AB5D","#238B45","#006D2C","#00441B")
+  redPalette <- c("#FFF5F0","#FEE0D2","#FCBBA1","#FC9272","#FB6A4A","#EF3B2C","#CB181D","#A50F15","#67000D")
+  getColor <- function (greenOrRed = "green", amount = 0) {
+    if (amount == 0)
+      return("#FFFFFF")
+    palette <- greenPalette
+    if (greenOrRed == "red")
+      palette <- redPalette
+    colorRampPalette(palette)(100)[10 + ceiling(90 * amount / total)]
+  }
+  
+  # set the basic layout
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('CONFUSION MATRIX', cex.main=2)
+  
+  # create the matrix 
+  classes = colnames(cm$table)
+  rect(150, 430, 240, 370, col=getColor("green", res[1]))
+  text(195, 435, classes[1], cex=1.2)
+  rect(250, 430, 340, 370, col=getColor("red", res[3]))
+  text(295, 435, classes[2], cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col=getColor("red", res[2]))
+  rect(250, 305, 340, 365, col=getColor("green", res[4]))
+  text(140, 400, classes[1], cex=1.2, srt=90)
+  text(140, 335, classes[2], cex=1.2, srt=90)
+  
+  # add in the cm results
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+  
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(cm$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(cm$byClass[1]), 3), cex=1.2)
+  text(30, 85, names(cm$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(cm$byClass[2]), 3), cex=1.2)
+  text(50, 85, names(cm$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(cm$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(cm$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(cm$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(cm$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
+  
+  # add in the accuracy information 
+  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+}
+```
+
+\
+See the confusion matrix for model 1 below. We will use these statistics for model performance comparison later on.
+```{r}
+model1_cm <- confusionMatrix(predtest.model1,actualTest.model1)
+draw_confusion_matrix(model1_cm)
+```
+
+
+### Model 1 - ROC & AUC
+ROC is a probability curve and AUC represents the degree or measure of separability. It tells how much the model is capable of distinguishing between classes. Higher the AUC, the better the model is at predicting 0s as 0s and 1s as 1s.
+```{r}
+ROC1 <- roc(actualTest.model1, probtest.model1)
+plot(ROC1, col="red")
+
+#Area under the curve
+AUC1 <- auc(ROC1)
+AUC1
+```
+
+### Model 1 - Stability
+First we want to create a new data frame with the with predicted probabilities, Actual Value and Predicted Value.
+```{r}
+predicted_data1 <- data.frame(Probs = probtest.model1, 
+                              Actual_Value= actualTest.model1,        
+                              Predicted_Value = predtest.model1 )  
+
+#sorting the probabilities
+predicted_data1 <- predicted_data1[order(predicted_data1$Probs,
+                                         decreasing=TRUE),] 
+
+# Add rank variable
+predicted_data1$Rank <- 1:nrow(predicted_data1) 
+
+head(predicted_data1)
+```
+\
+```{r}
+ggplot(data=predicted_data1, aes(x=Rank, y=Probs)) + 
+  geom_point(aes(color = Actual_Value)) + xlab("Index") + ylab("Predicted Probability of Churn")
+```
+\
+The graph above shows how the actual churn value is distributed against the models predicted probability of churn. We know that a rank/index of 1 will have a higher probability and will decrease as you move down the rank. The colour here shows the distribution of the actual values.
+\
+\
+Next we will put the values into decile.
+\
+```{r}
+#Creating an empty data frame
+decile.model1<- data.frame(matrix(ncol=4,nrow = 0))
+colnames(decile.model1) <- c("Decile", "per_correct_preds", "No_correct_Preds",
+                             "cum_preds")
+
+#Initializing the variables 
+num_of_deciles=10
+Obs_per_decile<-nrow(predicted_data1)/num_of_deciles
+decile_count=1
+start=1
+stop=(start-1) + Obs_per_decile
+prev_cum_pred<-0
+x=0
+
+#Creating the deciles
+while (x < nrow(predicted_data1)) {
+  subset<-predicted_data1[c(start:stop),]
+  correct_count<- ifelse(subset$Actual_Value==subset$Predicted_Value,1,0)
+  no_correct_Preds<-sum(correct_count,na.rm = TRUE)
+  per_correct_Preds<-(no_correct_Preds/Obs_per_decile)*100
+  cum_preds<-no_correct_Preds+prev_cum_pred
+  addRow<-data.frame("Decile"=decile_count,"per_correct_preds"=per_correct_Preds,"No_correct_Preds"=no_correct_Preds,"cum_preds"=cum_preds)
+  decile.model1<-rbind(decile.model1,addRow)
+  prev_cum_pred<-prev_cum_pred+no_correct_Preds
+  start<-stop+1
+  stop=(start-1) + Obs_per_decile
+  x<-x+Obs_per_decile
+  decile_count<-decile_count+1
+}
+```
+\
+\
+See data below for the stability table
+```{r}
+decile.model1
+```
+\
+Plotting the stability graph for model 1 gives.
+\
+```{r}
+plot(decile.model1$Decile,
+     decile.model1$per_correct_preds,
+     type = "l",
+     xlab = "Decile",
+     ylab = "Percentage of correct predictions",
+     main="Stability Plot for Model 1")
+```
+\
+Based on visual inspection of the deciles of Model1, we can conclude that the model is unstable
+
+
+\newpage
+## Model 2
+\
+For the second regression model we will start out with a blank model. The starting point here will be an intercept and no terms except the response (churn).
+```{r, warning=FALSE,}
+base.model <- glm(Churn ~ 1, data = train.data, family = binomial)
+summary(base.model)
+```
+\
+Now that we have a blank model we will look at the effect of adding each variable in turn. The variable that has the lowest AIC value will be the ones we incorporate into our model 2.
+
+```{r, warning=FALSE}
+add1(base.model, scope = train.data, test = 'Chisq')
+```
+\
+Here we want to include only variables that are significant.
+\
+```{r}
+model.2 <-  glm(Churn ~ International.plan + Total.day.minutes + 
+                  Total.day.charge + Voice.mail.plan +Number.vmail.messages +
+                  Total.eve.minutes + Total.eve.charge + Total.intl.charge +
+                  Customer.service.calls,
+                data=train.data, 
+                family=binomial(link="logit"))
+
+summary(model.2)
+```
+
+### Model 2 - Log Likelihood
+Here we calculate the log likelihood of model 2.
+```{r}
+logLik(model.2)
+```
+
+### Model 2 - R-Squared
+Calculating the r-squared value for model 2, gives:
+```{r}
+#log-likelihood of the null model
+model2.null <- model.2$null.deviance/-2
+
+#log-likelihood of model 2
+model2.proposed <- model.2$deviance/-2
+
+#Calculating McFaddens Pseudo R squared
+r_sq2 <- (model2.null  - model2.proposed)/model2.null
+r_sq2
+```
+
+### Model 2 - P-Value
+```{r}
+p_value2 <- 1 - pchisq(2*(model1.proposed - model1.null), 
+                      df = (length(model.1$coefficients)-1))
+p_value2
+```
+\
+Since the p-value is 0, it indicates that the explained variation in this model is not due to chance.
+
+### Model 2 - Confusion Matrix
+Again, we use the test data to make prediction for the Churn probabilities. After converting all probabilities greater than or equal to 0.5 to 1 and the probabilities less than 0.5 to 0, where 1 indicates the customer has churned and 0 indicated that the customer has not churned, we will display the confusion matrix.
+```{r}
+#predict the probabilities
+probtest.model2 =predict(model.2, test.data, type = "response") 
+
+#Re-code probability to classifiers
+predVal2 <- ifelse(probtest.model2 >= 0.5, 1, 0)
+predtest.model2 <- factor(predVal2, levels = c(0,1))
+
+# Assigning the target class to a variable
+actualTest.model2 <-test.data$Churn
+```
+\
+The confusion matrix for model 2 can be seen below
+```{r}
+model2_cm <- confusionMatrix(predtest.model2,actualTest.model2)
+draw_confusion_matrix(model2_cm)
+```
+\
+We will take a deeper look at the details later.
+
+### Model 2 - ROC & AUC
+```{r}
+ROC2 <- roc(actualTest.model2, probtest.model2)
+plot(ROC2, col="yellow")
+
+#Area under the curve
+AUC2 <- auc(ROC2)
+AUC2
+```
+
+
+### Model 2 - Stability
+First we want to create a new data frame with the with predicted probabilities, Actual Value and Predicted Value.
+```{r}
+predicted_data2 <- data.frame(Probs = probtest.model2, 
+                              Actual_Value= actualTest.model2,        
+                              Predicted_Value = predtest.model2)  
+
+#sorting the probabilities
+predicted_data2 <- predicted_data2[order(predicted_data2$Probs,
+                                         decreasing=TRUE),] 
+
+# Add rank variable
+predicted_data2$Rank <- 1:nrow(predicted_data2) 
+
+head(predicted_data2)
+```
+\
+\
+```{r}
+ggplot(data=predicted_data2, aes(x=Rank, y=Probs)) + 
+  geom_point(aes(color = Actual_Value)) + xlab("Index") + ylab("Predicted Probability of Churn")
+```
+\
+We see the same graph again, this time show the distribution of the probability of churn distribution for model 2.
+\
+\
+Next we will put the values into deciles.
+\
+```{r}
+#Creating an empty data frame
+decile.model2<- data.frame(matrix(ncol=4,nrow = 0))
+colnames(decile.model2) <- c("Decile", "per_correct_preds", "No_correct_Preds",
+                             "cum_preds")
+
+#Initializing the variables 
+num_of_deciles=10
+Obs_per_decile<-nrow(predicted_data2)/num_of_deciles
+decile_count=1
+start=1
+stop=(start-1) + Obs_per_decile
+prev_cum_pred<-0
+x=0
+
+#Creating the deciles
+while (x < nrow(predicted_data2)) {
+  subset<-predicted_data2[c(start:stop),]
+  correct_count<- ifelse(subset$Actual_Value==subset$Predicted_Value,1,0)
+  no_correct_Preds<-sum(correct_count,na.rm = TRUE)
+  per_correct_Preds<-(no_correct_Preds/Obs_per_decile)*100
+  cum_preds<-no_correct_Preds+prev_cum_pred
+  addRow<-data.frame("Decile"=decile_count,"per_correct_preds"=per_correct_Preds,"No_correct_Preds"=no_correct_Preds,"cum_preds"=cum_preds)
+  decile.model2<-rbind(decile.model2,addRow)
+  prev_cum_pred<-prev_cum_pred+no_correct_Preds
+  start<-stop+1
+  stop=(start-1) + Obs_per_decile
+  x<-x+Obs_per_decile
+  decile_count<-decile_count+1
+}
+```
+\
+See data below for the stability table
+```{r}
+decile.model2
+```
+\
+Plotting the stability graph for model 1 gives.
+\
+```{r}
+plot(decile.model2$Decile,
+     decile.model2$per_correct_preds,
+     type = "l",
+     xlab = "Decile",
+     ylab = "Percentage of correct predictions",
+     main="Stability Plot for Model 2")
+```
+\
+Based on the visualization above we can conclude that model 2 is unstable.
+
+\newpage
+## Model 3
+\
+```{r}
+model.3 <- rpart(Churn ~ .,
+                 method="class", 
+                 data=train.data, 
+                 parms = list (split ="information gain"), 
+                 control = rpart.control(minsplit = 100, maxdepth = 6))  
+
+rpart.plot(model.3, type=5, extra = 2, fallen.leaves = T, cex = 0.7) 
+```
+
+### Model 3 - Confusion Matrix
+Using test data to make prediction for the Churn probabilities we find the predictor class and probabilities. We will then display the confusion matrix.
+```{r}
+#predicting the class
+predtest.model3 <- predict(model.3, test.data, type="class")
+
+#predicting the probabilities
+probtest.model3 <- predict(model.3, test.data, type="prob")
+
+# Assigning the target class to a variable
+actualTest.model3 <-test.data$Churn
+```
+\
+The confusion matrix for model 3 can be seen below.
+\
+```{r}
+model3_cm <- confusionMatrix(predtest.model3,actualTest.model3)
+draw_confusion_matrix(model3_cm)
+```
+
+### Model 3 - ROC & AUC
+```{r}
+ROC3 <- roc(actualTest.model3, probtest.model3[,2])
+plot(ROC3, col="blue")
+
+#Area under the curve
+AUC3 <- auc(ROC3)
+AUC3
+```
+
+### Model 3 - Stability
+Again we want to create a new data frame with the with predicted probabilities, Actual Value and Predicted Value.
+```{r}
+predicted_data3 <- data.frame(Probs = probtest.model3, 
+                              Actual_Value= actualTest.model3,        
+                              Predicted_Value = predtest.model3 )  
+
+#sorting the probabilities
+predicted_data3 <- predicted_data3[order(predicted_data3$Probs.0,
+                                         decreasing=TRUE),] 
+
+# Add rank variable
+predicted_data3$Rank <- 1:nrow(predicted_data3) 
+
+head(predicted_data3)
+```
+\
+\
+```{r}
+ggplot(data=predicted_data3, aes(x=Rank, y=Probs.1)) + 
+  geom_point(aes(color = Actual_Value)) + xlab("Index") + ylab("Predicted Probability of Churn")
+```
+\
+Looking at the graph above, we can see clearly that the model has done great job a predicting 0's as 0's and 1's as ones. This is apparent through the start divide between the red data points whose actual value is 0 and the probability of churn is low versus the blue data points whose actual value is 1 and the probability of churn is high.
+\
+\
+Next we will put the values into deciles.
+\
+```{r}
+#Creating an empty data frame
+decile.model3<- data.frame(matrix(ncol=4,nrow = 0))
+colnames(decile.model3) <- c("Decile", "per_correct_preds", "No_correct_Preds",
+                             "cum_preds")
+
+#Initializing the variables 
+num_of_deciles=10
+Obs_per_decile<-nrow(predicted_data3)/num_of_deciles
+decile_count=1
+start=1
+stop=(start-1) + Obs_per_decile
+prev_cum_pred<-0
+x=0
+
+#Creating the deciles
+while (x < nrow(predicted_data3)) {
+  subset<-predicted_data3[c(start:stop),]
+  correct_count<- ifelse(subset$Actual_Value==subset$Predicted_Value,1,0)
+  no_correct_Preds<-sum(correct_count,na.rm = TRUE)
+  per_correct_Preds<-(no_correct_Preds/Obs_per_decile)*100
+  cum_preds<-no_correct_Preds+prev_cum_pred
+  addRow<-data.frame("Decile"=decile_count,"per_correct_preds"=per_correct_Preds,"No_correct_Preds"=no_correct_Preds,"cum_preds"=cum_preds)
+  decile.model3<-rbind(decile.model3,addRow)
+  prev_cum_pred<-prev_cum_pred+no_correct_Preds
+  start<-stop+1
+  stop=(start-1) + Obs_per_decile
+  x<-x+Obs_per_decile
+  decile_count<-decile_count+1
+}
+```
+\
+See data below for the stability table of class 0 for model 3.
+```{r}
+decile.model3
+```
+\
+Plotting the stability graph for model 2 gives.
+\
+```{r}
+plot(decile.model3$Decile,
+     decile.model3$per_correct_preds,
+     type = "l",
+     xlab = "Decile",
+     ylab = "Percentage of correct predictions",
+     main="Stability Plot for Model 3")
+```
+\
+Based on the visualization above we can conclude that model 3 is stable.
+
+\newpage
+## Model 4
+\
+```{r}
+model.4 <- rpart(Churn ~ .,
+                 method="class", 
+                 data=train.data, 
+                 parms = list (split ="gini"), 
+                 control = rpart.control(minsplit = 20, maxdepth = 6))  
+
+rpart.plot(model.4, type=5, extra = 2, fallen.leaves = T, cex = 0.6) 
+```
+
+### Model 4 - Confusion Matrix
+Finally using  test data to make prediction for the Churn probabilities we find the predictor class and probabilities. We will then display the confusion matrix.
+```{r}
+#predicting the class
+predtest.model4 <- predict(model.4, test.data, type="class")
+
+#predicting the probabilities
+probtest.model4 <- predict(model.4, test.data, type="prob")
+
+# Assigning the target class to a variable
+actualTest.model4 <-test.data$Churn
+```
+
+
+### Model 4 - ROC & AUC
+```{r}
+ROC4 <- roc(actualTest.model4, probtest.model4[,2])
+plot(ROC4, col="green")
+
+#Area under the curve
+AUC4 <- auc(ROC4)
+AUC4
+```
+
+### Model 4 - Stability
+Finally, we want to create a new data frame with the with predicted probabilities, Actual Value and Predicted Value.
+```{r}
+predicted_data4 <- data.frame(Probs = probtest.model4, 
+                              Actual_Value= actualTest.model4,        
+                              Predicted_Value = predtest.model4 )  
+
+#sorting the probabilities
+predicted_data4 <- predicted_data4[order(predicted_data4$Probs.0,
+                                         decreasing=TRUE),] 
+
+# Add rank variable
+predicted_data4$Rank <- 1:nrow(predicted_data4) 
+
+head(predicted_data4)
+```
+\
+\
+```{r}
+ggplot(data=predicted_data4, aes(x=Rank, y=Probs.1)) + 
+  geom_point(aes(color = Actual_Value)) + xlab("Index") + ylab("Predicted Probability of Churn")
+```
+\
+Here again we see a plot of the predicted probabilities against the actual values. Giving the visual distinction of how well the model is performing.
+\
+\
+```{r}
+model4_cm <- confusionMatrix(predtest.model4,actualTest.model4)
+draw_confusion_matrix(model4_cm)
+```
+\
+Next we will put the values into deciles.
+\
+```{r}
+#Creating an empty data frame
+decile.model4<- data.frame(matrix(ncol=4,nrow = 0))
+colnames(decile.model4) <- c("Decile", "per_correct_preds", "No_correct_Preds",
+                             "cum_preds")
+
+#Initializing the variables 
+num_of_deciles=10
+Obs_per_decile<-nrow(predicted_data4)/num_of_deciles
+decile_count=1
+start=1
+stop=(start-1) + Obs_per_decile
+prev_cum_pred<-0
+x=0
+
+#Creating the deciles
+while (x < nrow(predicted_data4)) {
+  subset<-predicted_data4[c(start:stop),]
+  correct_count<- ifelse(subset$Actual_Value==subset$Predicted_Value,1,0)
+  no_correct_Preds<-sum(correct_count,na.rm = TRUE)
+  per_correct_Preds<-(no_correct_Preds/Obs_per_decile)*100
+  cum_preds<-no_correct_Preds+prev_cum_pred
+  addRow<-data.frame("Decile"=decile_count,"per_correct_preds"=per_correct_Preds,"No_correct_Preds"=no_correct_Preds,"cum_preds"=cum_preds)
+  decile.model4<-rbind(decile.model4,addRow)
+  prev_cum_pred<-prev_cum_pred+no_correct_Preds
+  start<-stop+1
+  stop=(start-1) + Obs_per_decile
+  x<-x+Obs_per_decile
+  decile_count<-decile_count+1
+}
+```
+\
+See data below for the stability table of class 0 for model 4.
+```{r}
+decile.model4
+```
+
+\
+Plotting the stability graph for model 2 gives.
+\
+```{r}
+plot(decile.model4$Decile,
+     decile.model4$per_correct_preds,
+     type = "l",
+     xlab = "Decile",
+     ylab = "Percentage of correct predictions",
+     main="Stability Plot of for Model 4")
+```
+\
+Based on the visualization above we can conclude that model 4 is stable.
+
+\newpage
+# Evaluation
+\
+\
+To evaluate the performance of out four (4) models, we will use accuracy, simplicity, AUC and stability.
+\
+\
+From the information above we can summaries these performance metrics.
+\
+\
+Performance Evaluation measure for all models can be seen in the table below.
+\
+
+| Measure   | Description                               |
+|:----------|:------------------------------------------| 
+|Simplicity |Number of Significant variable/leaves      |
+|AUC        |Area Under the Curve                       |
+|Accuracy   |Measures how often the model correctly classifies a customer|
+|Stability  |Visual inspection of graph|see table below |
+|Sensitivity/Recall|The models ability to correctly classify an customer as churned|
+|Specificity| The model's its ability to designate an customer who has not churned correctly|
+|Precision|Proportion of predicted churned customers that actually churned|
+|F1 |Covers the imbalance between precision and recall|
+|Kappa|How better your classifier is performing over a classifier that guesses at random|
+
+
+|Models |Accuracy|Specificity|Precision|Sensitivity|F1    |Kappa|
+|:------|-------:|-----------|--------:|----------:|-----:|----:|
+|Model 1|0.864   |0.223      |0.881    |0.973      |0.925 |0.264|
+|Model 2|0.867   |0.207      |0.879    |0.979      |0.926 |0.257|
+|Model 3|0.928   |0.570      |0.931    |0.989      |0.959 |0.658|
+|Model 4|0.935   |0.661      |0.945    |0.982      |0.963 |0.711|
+
+
+| Measure   |Value Function                         | Weight  | Threshold |
+|:----------|:--------------------------------------|--------:|----------:|
+|Accuracy   |None                                   |0.50     |>0.80      |
+|Simplicity |See graph below                        |0.10     |>0.75      |
+|AUC        |None                                   |0.25     |>0.80      |
+|Stability  |Binary:1 for a stable tree;0 otherwise |0.15     |>0.60      |
+
+
+|Simplicity Value Function | Criteria                             |
+|:-------------------------|:-------------------------------------|
+|0                         |if NoOfLeaves <= 5 or NoOfLeaves >= 25|
+|(NoOfLeaves - 5)/(10 - 5) |if 6 <= NoOfLeaves <= 9               |
+|1                         |if 10 <= NoOfLeaves <= 15             |
+|(25 - NoOfLeaves)/(25 -15)|if 16 <= NoOfLeaves<= 24              |
+
+
+|Model|Accuracy|# of leaves/Attributes|Simplicity Score|AUC |Stability|Overall|
+|:------|:------:|:-------------------|:--------------:|:----:|:------|:------|
+|Model 1|0.864   |18                  |0.7             |0.8544|0      |0.7156|
+|Model 2|0.867   |9                   |0.8             |0.8497|0      |0.7259|
+|Model 3|0.928   |9                   |0.80            |0.8478|1      |0.9060|
+|Model 4|0.935   |13                  |1               |0.8989|1      |0.9422|
+\
+
+Given that Model 1 simplicity measure falls below the threshold, it has been eliminated for consideration.
+\
+Since model 4 has the highest overall performance score, this is the model that will be used to fulfill the company's requirements.
+
+\newpage
+# Deployment
+\
+\
+After selecting the best prediction model through evaluation using different performance measures, the model will be deployed into TeleCom’s production environment which will help them to predict customers who will churn in a given month.
+\
+\
+The deployment strategy involves saving the machine learning model as an RDS object in R. By using the Plumber package, we can create an HTTP API to be hosted on the company’s server that contains a prediction calculator that accepts the full list of parameters, or variable attributes that the model uses to predict whether a particular customer is likely to churn or not. 
+\
+![Picture 1](C:/Users\denec\Documents\School & Careers\UWI -Data Science\Semester 2\COMP 6115 - Knowledge Discovery and Data Analytics 1\Coursework\Final Project\Picture1.png)
+![Picture 2](C:/Users\denec\Documents\School & Careers\UWI -Data Science\Semester 2\COMP 6115 - Knowledge Discovery and Data Analytics 1\Coursework\Final Project\Picture2.png)
+ \
+ \
+The output, as represented in the Response body, is equivalent to the output of using the predict function in R with the same model, and identical arguments. In this example, the model predicts that this customer has a 9.3% chance of churning, and a 90.7% chance of remaining with the company. 
+
